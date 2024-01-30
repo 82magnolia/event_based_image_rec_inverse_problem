@@ -1,5 +1,6 @@
 import os
 import argparse
+from tqdm import tqdm
 
 
 def arg_parser():
@@ -25,7 +26,8 @@ def save_chunks(dataset_path, prefix):
     count = 0
     with open(filepath, "r") as f:
         g = open(save_path + f"{prefix}_{count}.txt", mode="wt")
-        for line in f: 
+        f_lines = f.readlines()
+        for line in tqdm(f_lines): 
             components = line.split()
             if len(components) == 0:
                 break

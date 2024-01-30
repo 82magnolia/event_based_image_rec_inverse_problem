@@ -26,13 +26,13 @@ def image_reconstruction(args):
     image_reconstructor = ImageReconstructor(flow_torch)
     img_rec_l1 = image_reconstructor.image_rec_from_events_l1(events_torch, reg_weight=1e-1)
     img_rec_l2 = image_reconstructor.image_rec_from_events_l2(events_torch, reg_weight=3e-1)
-    img_rec_denoiser = image_reconstructor.image_rec_from_events_cnn(events_torch, weight1=2.5, weight2=1.3)
+    # img_rec_denoiser = image_reconstructor.image_rec_from_events_cnn(events_torch, weight1=2.5, weight2=1.3)
     # Save images
     if not os.path.exists(output_path):
         os.mkdir(output_path)
     save_image(img_rec_l1, output_path, "l1.png")
     save_image(img_rec_l2, output_path, "l2.png")
-    save_image(img_rec_denoiser, output_path, "denoiser.png")
+    # save_image(img_rec_denoiser, output_path, "denoiser.png")
 
 if __name__ == '__main__':
     parser = arg_parser()
