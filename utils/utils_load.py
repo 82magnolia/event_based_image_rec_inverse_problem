@@ -3,6 +3,8 @@ import cv2
 import numpy as np
 import pandas as pd
 import torch
+import math
+
 
 def load_events_and_flow(dataset):
     dataset_path = os.path.join("sample_dataset", dataset)
@@ -29,6 +31,18 @@ class IJRRDataloader(object):
         self.dataset_path = dataset_path
         self.calib_np = self.load_calibration(dataset_path)
 
+        # Load events
+        self.events_np = np.load(f'{self.dataset_path}/events.npz')['events']
+
+        # Load IMU
+        if os.path.exists(f'{self.dataset_path}/imu.txt'):
+            imu_data = pd.read_csv(f'{self.dataset_path}/imu.txt',
+                                sep=' ', header=None, engine='python')
+            imu_data.columns = ["ts", "ax", "ay", "az", "gx", "gy", "gz"]
+            self.imu_np = imu_data.to_numpy()
+        else:
+            self.imu_np = None
+
     def load_calibration(self, dataset_path):
         calib = np.loadtxt(f'{dataset_path}/calib.txt')
         return calib
@@ -36,29 +50,27 @@ class IJRRDataloader(object):
     def load_events_and_flow(self, start_time, num_events):
         assert start_time > 0
         events_np = self.load_events(start_time, num_events)
-        imu_np = self.load_imu(start_time)
         middle_ev_t = events_np[num_events // 2, 0]
         ev_duration = events_np[-1, 0] - events_np[0, 0]
-        angular_velocity = self.get_ang_vel_from_imu(imu_np, middle_ev_t)
+        if self.imu_np is not None:
+            imu_np = self.load_imu(start_time)
+            angular_velocity = self.get_ang_vel_from_imu(imu_np, middle_ev_t)
+        else:
+            angular_velocity = np.zeros((3, ))
         flow_np = self.compute_flow(angular_velocity, ev_duration)
         events_torch = torch.from_numpy(events_np).unsqueeze(0)
         flow_torch = torch.from_numpy(flow_np).unsqueeze(0)
         return events_torch, flow_torch
 
     def load_events(self, start_time, num_events):
-        # Load events
-        events = pd.read_csv(f'{self.dataset_path}/events_chunk/events_{int(start_time)}.txt',
-                            sep=' ', header=None, engine='python')
-        events.columns = ["ts", "x", "y", "p"]
-        events_np = events.to_numpy()
         # Select a slice of events
-        events_t = events_np[:, 0]
-        total_num_events = len(events_np)
+        events_t = self.events_np[:, 0]
+        total_num_events = len(self.events_np)
         idx = np.searchsorted(events_t, start_time)
         if idx + num_events> total_num_events:
-            events_np = events_np[-num_events:, :]
+            events_np = np.copy(self.events_np[-num_events:, :])
         else:
-            events_np = events_np[idx:idx+num_events, :]
+            events_np = np.copy(self.events_np[idx:idx+num_events, :])
         # Get calibration data
         fx, fy, px, py = self.calib_np[0:4]
         dist_co = self.calib_np[4:]
@@ -81,15 +93,14 @@ class IJRRDataloader(object):
         return dst
     
     def load_imu(self, start_time):
-        imu_data = pd.read_csv(f'{self.dataset_path}/imu_chunk/imu_{int(start_time)}.txt',
-                               sep=' ', header=None, engine='python')
-        imu_data.columns = ["ts", "ax", "ay", "az", "gx", "gy", "gz"]
-        imu_np = imu_data.to_numpy()
-        return imu_np
+        imu_t = self.imu_np[:, 0]
+        slice_imu_np = self.imu_np[(math.floor(start_time) <= imu_t) & (imu_t < math.ceil(start_time))]
+        return slice_imu_np
 
     def get_ang_vel_from_imu(self, imu, seek_time):
         imu_ts = imu[:, 0]
         idx = np.searchsorted(imu_ts, seek_time)
+        if idx >= imu.shape[0]: idx = imu.shape[0] - 1
         angular_velocity = imu[idx, 4:]
         return angular_velocity
 
